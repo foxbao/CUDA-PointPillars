@@ -133,7 +133,8 @@ void SaveBoxPred(std::vector<pointpillar::lidar::BoundingBox> boxes, std::string
 
 std::shared_ptr<pointpillar::lidar::Core> create_core() {
     pointpillar::lidar::VoxelizationParameter vp;
-    vp.min_range = nvtype::Float3(0.0, -39.68f, -3.0);
+    // vp.min_range = nvtype::Float3(0.0, -39.68f, -3.0);
+    vp.min_range = nvtype::Float3(-69.12, -39.68f, -3.0);
     vp.max_range = nvtype::Float3(69.12f, 39.68f, 1.0);
     vp.voxel_size = nvtype::Float3(0.16f, 0.16f, 4.0f);
     vp.grid_size =
