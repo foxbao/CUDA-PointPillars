@@ -29,6 +29,8 @@
 #include "common/check.hpp"
 #include "common/launch.cuh"
 #include "common/tensorrt.hpp"
+#include <fstream>
+#include <iostream>
 
 namespace pointpillar {
 namespace lidar {
@@ -65,6 +67,87 @@ public:
     virtual void forward(const nvtype::half* voxels, const unsigned int* voxel_idxs, const unsigned int* params, void* stream = nullptr) override {
         cudaStream_t _stream = reinterpret_cast<cudaStream_t>(stream);
         engine_->forward({voxels, voxel_idxs, params, cls_, box_, dir_}, static_cast<cudaStream_t>(_stream));
+
+        // 以下代码是自己加的
+        // 保存anchor
+        // float *h_voxels_ = nullptr;
+        // float *h_voxel_idxs = nullptr;
+        // float *h_voxel_num = nullptr;
+        // std::vector<int> voxel_idxs_dims,voxel_num_dims,voxels_dims;
+        // voxels_dims=engine_->static_dims(0);
+        // voxel_idxs_dims=engine_->static_dims(1);
+        // voxel_num_dims=engine_->static_dims(2);
+
+        // int32_t volumn0 = std::accumulate(voxels_dims.begin(), voxels_dims.end(), 1, std::multiplies<int32_t>());
+        // int32_t volumn1 = std::accumulate(voxel_idxs_dims.begin(), voxel_idxs_dims.end(), 1, std::multiplies<int32_t>());
+        // int32_t volumn2 = std::accumulate(voxel_num_dims.begin(), voxel_num_dims.end(), 1, std::multiplies<int32_t>());
+
+        // // checkRuntime(cudaMallocHost(&h_voxels_, volumn0 * sizeof(float)));
+        // // checkRuntime(cudaMemcpy(h_voxels_, voxels, volumn0 * sizeof(float), cudaMemcpyDeviceToHost));
+        // // std::ofstream out("voxels.txt");
+        // // if (out.is_open()) {
+        // //     for (int i = 0; i < volumn0; i++) out << h_voxels_[i] << std::endl;
+        // //     out.close();
+        // // }
+
+        // // int a=1;
+
+        
+        //volumn3=41997322=BHWC_cls=1x248x432x392
+        int32_t volumn_cls = std::accumulate(cls_dims_.begin(), cls_dims_.end(), 1, std::multiplies<int32_t>());
+        //volumn4=20998656=BHWC_box=1x248x432x196
+        int32_t volumn4 = std::accumulate(box_dims_.begin(), box_dims_.end(), 1, std::multiplies<int32_t>());
+        //volumn4=5999616=BHWC_dir=1x248x432x56
+        int32_t volumn5 = std::accumulate(dir_dims_.begin(), dir_dims_.end(), 1, std::multiplies<int32_t>());
+        
+        float *h_cls = nullptr;
+        // float *h_box = nullptr;;
+        // float *h_dir = nullptr;;
+
+        // int32_t volumn = std::accumulate(cls_dims_.begin(), cls_dims_.end(), 1, std::multiplies<int32_t>());
+        checkRuntime(cudaMallocHost(&h_cls, volumn_cls * sizeof(float)));
+        checkRuntime(cudaMemcpy(h_cls, cls_, volumn_cls * sizeof(float), cudaMemcpyDeviceToHost));
+
+        std::ofstream out("../data_output/4d_array_trt.bin", std::ios::binary);
+        if (out) {
+            out.write(reinterpret_cast<const char*>(h_cls), volumn_cls*sizeof(h_cls));
+            std::cout<<"!!!!!!!!!!!!!!!!!!!!!!"<<std::endl;
+            std::cout << "Binary file saved to: data/4d_array_trt.bin" << std::endl;
+            std::cout<<"!!!!!!!!!!!!!!!!!!!!!!"<<std::endl;
+        } else {
+            std::cerr << "Error: Failed to save file!" << std::endl;
+            // return 1;
+        }
+        // std::ofstream out("cls.txt");
+        // if (out.is_open()) {
+        //     for (int i = 0; i < volumn; i++) out << h_cls[i] << std::endl;
+        //     out.close();
+        // }
+
+
+        // volumn = std::accumulate(box_dims_.begin(), box_dims_.end(), 1, std::multiplies<int32_t>());
+        // checkRuntime(cudaMallocHost(&h_box, volumn * sizeof(float)));
+        // checkRuntime(cudaMemcpy(h_box, box_, volumn * sizeof(float), cudaMemcpyDeviceToHost));
+        // std::ofstream out2("box.txt");
+        // if (out2.is_open()) {
+        //     for (int i = 0; i < volumn; i++) out2 << h_box[i] << std::endl;
+        //     out2.close();
+        // }
+
+        // volumn = std::accumulate(dir_dims_.begin(), dir_dims_.end(), 1, std::multiplies<int32_t>());
+        // checkRuntime(cudaMallocHost(&h_dir, volumn * sizeof(float)));
+        // checkRuntime(cudaMemcpy(h_dir, dir_, volumn * sizeof(float), cudaMemcpyDeviceToHost));
+        // std::ofstream out3("dir.txt");
+        // if (out3.is_open()) {
+        //     for (int i = 0; i < volumn; i++) out3 << h_dir[i] << std::endl;
+        //     out3.close();
+        // }
+
+        //         // 释放内存
+        // if (h_cls) cudaFreeHost(h_cls);
+        // if (h_box) cudaFreeHost(h_box);
+        // if (h_dir) cudaFreeHost(h_dir);
+
     }
 
     virtual float* cls() override { return cls_; }
