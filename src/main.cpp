@@ -139,8 +139,8 @@ std::shared_ptr<pointpillar::lidar::Core> create_core() {
     vp.voxel_size = nvtype::Float3(0.16f, 0.16f, 4.0f);
     vp.grid_size =
         vp.compute_grid_size(vp.max_range, vp.min_range, vp.voxel_size);
-    // vp.max_voxels = 40000;
-    vp.max_voxels = 12537;
+    vp.max_voxels = 40000;
+    // vp.max_voxels = 12537;
 
     vp.max_points_per_voxel = 32;
     vp.max_points = 300000;

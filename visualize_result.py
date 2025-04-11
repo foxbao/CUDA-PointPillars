@@ -2,6 +2,29 @@ import numpy as np
 import open3d as o3d
 from matplotlib import cm
 
+box_colormap = [
+    (1, 0, 0),        # 红色, Pedestrian，因为数据集里面会对每个label+1
+    (0, 1, 0),        # 绿色，Car 
+    (0, 0, 1),        # 蓝色，IGV-Full 
+    (1, 1, 0),        # 黄色，Truck
+    (0, 1, 1),        # 青色，Trailer-Empty
+    (1, 0, 1),        # 紫色，Trailer-Full
+    (0.5, 0.5, 0.5),  # 灰色，IGV-Empty
+    (1, 0.5, 0),      # 橙色，Crane
+    (0.5, 0, 0.5),    # 深紫色，OtherVehicle
+    (0, 0.5, 0.5),    # 深青色，Cone
+    (0.2, 0.8, 0.2),  # 浅绿，ContainerForklift
+    (0.8, 0.2, 0.2),  # 浅红，Forklift
+    (0.2, 0.2, 0.8),  # 浅蓝，Lorry
+    (0.7, 0.7, 0.2),  # 橄榄绿，ConstructionVehicle
+    (0.6, 0.3, 0.7),  # 淡紫色
+    (0.9, 0.6, 0.1),  # 金色
+    (0.4, 0.7, 0.4),  # 薄荷绿
+    (0.3, 0.5, 0.8),  # 天蓝
+    (0.8, 0.4, 0.6),  # 粉红
+    (0.1, 0.9, 0.5)   # 荧光绿
+]
+
 def read_bin_file(bin_path):
     """读取KITTI点云bin文件"""
     point_cloud = np.fromfile(bin_path, dtype=np.float32).reshape(-1, 4)
@@ -13,7 +36,7 @@ def read_bboxes_from_txt(txt_path):
     with open(txt_path, 'r') as f:
         for line in f:
             parts = list(map(float, line.strip().split()))
-            bbox = parts[:7]  # 取前7个参数 (x,y,z,l,w,h,rotation_y)
+            bbox = parts[:8]  # 取前7个参数 (x,y,z,l,w,h,rotation_y,label)
             bboxes.append(bbox)
     return np.array(bboxes)
 
@@ -75,7 +98,11 @@ def visualize_point_cloud_with_boxes(bin_path, txt_path):
     bbox_geometries = []
     print('num boxes:', len(bboxes))
     for i, bbox in enumerate(bboxes):
-        color = cm.plasma(i / len(bboxes))[:3]  # 框的颜色渐变
+        # color = cm.plasma(i / len(bboxes))[:3]  # 框的颜色渐变
+        # color = (0, 1, 0)  # 固定为绿色 RGB4661
+        label=int(bbox[7])
+        color = box_colormap[label]  # 固定为绿色 RGB
+
         bbox_geometries.append(create_3d_bbox(bbox, color=color))
     
     # 添加坐标系
