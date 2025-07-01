@@ -1,133 +1,116 @@
+import os
 import numpy as np
-import open3d as o3d
-from matplotlib import cm
+import pyvista as pv
+from glob import glob
 
-box_colormap = [
-    (1, 0, 0),        # 红色, Pedestrian，因为数据集里面会对每个label+1
-    (0, 1, 0),        # 绿色，Car 
-    (0, 0, 1),        # 蓝色，IGV-Full 
-    (1, 1, 0),        # 黄色，Truck
-    (0, 1, 1),        # 青色，Trailer-Empty
-    (1, 0, 1),        # 紫色，Trailer-Full
-    (0.5, 0.5, 0.5),  # 灰色，IGV-Empty
-    (1, 0.5, 0),      # 橙色，Crane
-    (0.5, 0, 0.5),    # 深紫色，OtherVehicle
-    (0, 0.5, 0.5),    # 深青色，Cone
-    (0.2, 0.8, 0.2),  # 浅绿，ContainerForklift
-    (0.8, 0.2, 0.2),  # 浅红，Forklift
-    (0.2, 0.2, 0.8),  # 浅蓝，Lorry
-    (0.7, 0.7, 0.2),  # 橄榄绿，ConstructionVehicle
-    (0.6, 0.3, 0.7),  # 淡紫色
-    (0.9, 0.6, 0.1),  # 金色
-    (0.4, 0.7, 0.4),  # 薄荷绿
-    (0.3, 0.5, 0.8),  # 天蓝
-    (0.8, 0.4, 0.6),  # 粉红
-    (0.1, 0.9, 0.5)   # 荧光绿
-]
+class_names = {
+    0: "Pedestrian",
+    1: "Car",
+    2: "IGV-Full",
+    3: "Truck",
+    4: "Trailer-Empty",
+    5: "Trailer-Full",
+    6: "IGV-Empty",
+    7: "Crane",
+    8: "OtherVehicle",
+    9: "Cone",
+    10: "ContainerForklift",
+    11: "Forklift",
+    12: "Lorry",
+    13: "ConstructionVehicle",
+    14: "WheelCrane"
+}
+
 
 def read_bin_file(bin_path):
-    """读取KITTI点云bin文件"""
+    """读取点云 bin 文件"""
     point_cloud = np.fromfile(bin_path, dtype=np.float32).reshape(-1, 4)
-    return point_cloud[:, :3]  # 只取xyz坐标
+    return point_cloud[:, :3]
 
 def read_bboxes_from_txt(txt_path):
-    """从txt文件读取3D检测框"""
+    """读取检测框：返回 Nx9 数组"""
     bboxes = []
     with open(txt_path, 'r') as f:
         for line in f:
             parts = list(map(float, line.strip().split()))
-            bbox = parts[:8]  # 取前7个参数 (x,y,z,l,w,h,rotation_y,label)
-            bboxes.append(bbox)
+            bboxes.append(parts)
     return np.array(bboxes)
 
-def create_3d_bbox(bbox_3d, color=(1, 0, 0)):
-    """创建3D检测框线框"""
-    center = bbox_3d[:3]
-    length, width, height = bbox_3d[3:6]
-    rotation = bbox_3d[6]
-    
-    # 计算8个角点
+def create_bbox_lines(bbox):
+    """构建立方体线框的 12 条边"""
+    x, y, z = bbox[0:3]
+    l, w, h = bbox[3:6]
+    ry = bbox[6]
+
+    # 构建局部坐标系下的 8 个角点
     corners = np.array([
-        [length/2, width/2, height/2],
-        [length/2, width/2, -height/2],
-        [length/2, -width/2, height/2],
-        [length/2, -width/2, -height/2],
-        [-length/2, width/2, height/2],
-        [-length/2, width/2, -height/2],
-        [-length/2, -width/2, height/2],
-        [-length/2, -width/2, -height/2]
-    ])
-    
-    # 应用旋转和平移
-    # rotation=0
-    rot_mat = np.array([
-        [np.cos(rotation), -np.sin(rotation), 0],
-        [np.sin(rotation), np.cos(rotation), 0],
-        [0, 0, np.cos(rotation)]
+        [ l/2,  w/2,  h/2],
+        [ l/2, -w/2,  h/2],
+        [-l/2, -w/2,  h/2],
+        [-l/2,  w/2,  h/2],
+        [ l/2,  w/2, -h/2],
+        [ l/2, -w/2, -h/2],
+        [-l/2, -w/2, -h/2],
+        [-l/2,  w/2, -h/2],
     ])
 
-    # rot_mat=np.ones(3,3)
-    corners = np.dot(corners, rot_mat.T) + center
-    
-    # 定义12条边
-    lines = [
-        [0, 1], [0, 2], [1, 3], [2, 3],
-        [4, 5], [4, 6], [5, 7], [6, 7],
-        [0, 4], [1, 5], [2, 6], [3, 7]]
-    
-    # 创建线框
-    line_set = o3d.geometry.LineSet()
-    line_set.points = o3d.utility.Vector3dVector(corners)
-    line_set.lines = o3d.utility.Vector2iVector(lines)
-    line_set.colors = o3d.utility.Vector3dVector([color for _ in range(len(lines))])
-    return line_set
+    # 绕 Z 轴旋转
+    R = np.array([
+        [np.cos(ry), -np.sin(ry), 0],
+        [np.sin(ry),  np.cos(ry), 0],
+        [0, 0, 1]
+    ])
+    rotated = (R @ corners.T).T + np.array([x, y, z])
 
-def visualize_point_cloud_with_boxes(bin_path, txt_path):
-    """可视化点云和3D检测框（黑色背景+白色点）"""
-    # 读取数据
-    points = read_bin_file(bin_path)
-    bboxes = read_bboxes_from_txt(txt_path)
-    
-    # 创建点云并设置为白色
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    pcd.colors = o3d.utility.Vector3dVector(np.ones((points.shape[0], 3)))  # 所有点设为白色
-    
-    # 创建检测框（按置信度着色）
+    # 定义 12 条边的索引
+    edges = [
+        [0,1], [1,2], [2,3], [3,0],  # 顶部
+        [4,5], [5,6], [6,7], [7,4],  # 底部
+        [0,4], [1,5], [2,6], [3,7]   # 竖线
+    ]
 
-    bbox_geometries = []
-    print('num boxes:', len(bboxes))
-    for i, bbox in enumerate(bboxes):
-        # color = cm.plasma(i / len(bboxes))[:3]  # 框的颜色渐变
-        # color = (0, 1, 0)  # 固定为绿色 RGB4661
-        label=int(bbox[7])
-        color = box_colormap[label]  # 固定为绿色 RGB
+    return rotated, edges
 
-        bbox_geometries.append(create_3d_bbox(bbox, color=color))
-    
-    # 添加坐标系
-    coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=2)
-    
-    # 可视化设置
-    vis = o3d.visualization.Visualizer()
-    vis.create_window(window_name="KITTI Point Cloud", width=1200, height=800)
-    vis.add_geometry(pcd)
-    vis.add_geometry(coordinate_frame)
-    for bbox in bbox_geometries:
-        vis.add_geometry(bbox)
-    
-    # 设置渲染选项
-    render_opt = vis.get_render_option()
-    render_opt.background_color = np.array([0, 0, 0])  # 黑色背景
-    render_opt.point_size = 2.0  # 增大点大小（默认1.0）
-    render_opt.light_on = True   # 启用光照（增强白色点可见性）
-    
-    vis.run()
-    vis.destroy_window()
+def visualize_point_cloud_and_boxes(bin_file, txt_file):
+    # 加载点云
+    points = read_bin_file(bin_file)
+    pcd = pv.PolyData(points)
+
+    plotter = pv.Plotter(window_size=(1600, 1000))
+    plotter.set_background("black")
+    plotter.add_points(pcd, color="white", point_size=2)
+
+    # 加载检测框
+    bboxes = read_bboxes_from_txt(txt_file)
+    for bbox in bboxes:
+        label = int(bbox[7])
+        score = bbox[8]
+        corners, edges = create_bbox_lines(bbox)
+        for edge in edges:
+            p0, p1 = corners[edge[0]], corners[edge[1]]
+            plotter.add_lines(np.array([p0, p1]), color='green', width=2)
+
+        # 添加文字
+        text_pos = corners[0] + np.array([0, 0, 0.5])  # 抬高文字
+        class_name = class_names.get(label, f"Class{label}")
+        text = f"{class_name} {score:.2f}"
+        # text = f"{label}:{score:.2f}"
+        plotter.add_point_labels([text_pos], [text], text_color='green', font_size=12, point_size=0)
+
+    plotter.show()
+
+def traverse_and_visualize(data_dir):
+    bin_files = sorted(glob(os.path.join(data_dir, "*.bin")))
+    for bin_path in bin_files:
+        base_name = os.path.splitext(os.path.basename(bin_path))[0]
+        txt_path = os.path.join(data_dir, base_name + ".txt")
+        if not os.path.exists(txt_path):
+            print(f"Missing txt for {bin_path}")
+            continue
+        print(f"Visualizing: {bin_path}")
+        visualize_point_cloud_and_boxes(bin_path, txt_path)
 
 if __name__ == "__main__":
-    bin_file = "data/1733211963.001387.bin"
-    txt_file = "data/1733211963.001387.txt"
-    # bin_file = "data/000000.bin"
-    # txt_file = "data/000000.txt"
-    visualize_point_cloud_with_boxes(bin_file, txt_file)
+    data_dir = "data/data_20250507/lidar_merged"  # 改为你的路径
+    # data_dir = "data/20250604"  # 改为你的路径
+    traverse_and_visualize(data_dir)
